@@ -1,10 +1,13 @@
 import {resolve} from 'node:path';
 import {Base44} from './base44.mjs';
 import {Store} from './store.mjs';
+import {RemoteStore} from './remote-store.mjs';
 import {createApp} from './app.mjs';
 const port=Number(process.env.PORT||8787);
 const client=new Base44({token:process.env.BASE44_PAT,workspaceId:process.env.BASE44_WORKSPACE_ID,publicSettings:process.env.BASE44_APP_VISIBILITY||undefined});
-const store=await new Store(resolve(process.env.BOO_DATA_FILE||'data/studio.json')).init();
+const store=await (process.env.BOO_STATE_APP_ID
+  ? new RemoteStore(client,process.env.BOO_STATE_APP_ID,process.env.BOO_STATE_RECORD_ID)
+  : new Store(resolve(process.env.BOO_DATA_FILE||'data/studio.json'))).init();
 const server=createApp({client,store,adminKey:process.env.BOO_ADMIN_KEY,allowedOrigins:(process.env.BOO_ALLOWED_ORIGINS||`http://localhost:${port}`).split(',').map(x=>x.trim())});
 server.requestTimeout=180000;
 server.listen(port,process.env.HOST||'127.0.0.1',()=>console.log(`Boo Studio server listening on port ${port}`));
