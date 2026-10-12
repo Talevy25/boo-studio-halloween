@@ -8,6 +8,6 @@ const client=new Base44({token:process.env.BASE44_PAT,workspaceId:process.env.BA
 const store=await (process.env.BOO_STATE_APP_ID
   ? new RemoteStore(client,process.env.BOO_STATE_APP_ID,process.env.BOO_STATE_RECORD_ID)
   : new Store(resolve(process.env.BOO_DATA_FILE||'data/studio.json'))).init();
-const server=createApp({client,store,adminKey:process.env.BOO_ADMIN_KEY,allowedOrigins:(process.env.BOO_ALLOWED_ORIGINS||`http://localhost:${port}`).split(',').map(x=>x.trim())});
+const server=createApp({client,store,adminKey:process.env.BOO_ADMIN_KEY,allowedOrigins:(process.env.BOO_ALLOWED_ORIGINS||`http://localhost:${port}`).split(',').map(x=>x.trim()).concat('https://boo-studio-backend.onrender.com')});
 server.requestTimeout=180000;
 server.listen(port,process.env.HOST||'127.0.0.1',()=>console.log(`Boo Studio server listening on port ${port}`));
