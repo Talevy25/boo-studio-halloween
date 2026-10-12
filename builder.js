@@ -14,7 +14,7 @@ async function api(path,{method='GET',body,requestId}={}) {
   if(!response.ok)throw Error(data.error||'The builder could not complete this request.');return data;
 }
 function controls(state='unknown') {
-  const locked=operation||waiting.length>0||state==='processing'||!active;
+  const locked=operation||waiting.length>0||state==='processing';
   $('#followup').disabled=locked;$('#send-followup').disabled=locked;
   $('#publish-app').disabled=locked||state!=='ready';$('#refresh-preview').disabled=operation||!active||state==='processing';
   document.querySelectorAll('#build-questions button').forEach(button=>button.disabled=operation);
@@ -23,6 +23,7 @@ function drawMessages() {
   const container=$('#build-messages');container.replaceChildren();
   for(const m of messages.values()){if(!m.content||m.hidden)continue;const card=text('div','',`chat-message ${m.role==='user'?'user':'assistant'}`);card.append(text('b',m.role==='user'?'You':'Boo Studio'),text('p',m.content));container.append(card)}
 }
+let pendingAction=null;
 let questionSignature='';
 function drawQuestions() {
   const host=$('#build-questions'),signature=JSON.stringify(waiting);
@@ -107,27 +108,37 @@ export const studio={
     };
     $('#connect-builder').onclick=showConnection;$('#close-connect').onclick=()=>$('#connect-dialog').close();
     $('#connect-form').onsubmit=async e=>{e.preventDefault();$('#connection-error').textContent='';$('#connect-submit').disabled=true;
-      try{version++;clearTimeout(timer);backend=origin($('#backend-url').value);accessKey=$('#studio-key').value;const health=await api('/health');if(!health.configured)throw Error('Your backend is missing its Base44 workspace, token, or studio key.');const data=await api('/apps');for(const app of data.apps)onApp({...app,remote:true});try{localStorage.setItem('boo-backend',backend);sessionStorage.setItem('boo-session',JSON.stringify({backend,key:accessKey}))}catch{}$('#connect-builder').textContent='Studio unlocked';$('#studio-key').value='';$('#connect-dialog').close();}
+      try{version++;clearTimeout(timer);backend=origin($('#backend-url').value);accessKey=$('#studio-key').value;const health=await api('/health');if(!health.configured)throw Error('Your backend is missing its Base44 workspace, token, or studio key.');const data=await api('/apps');for(const app of data.apps)onApp({...app,remote:true});try{localStorage.setItem('boo-backend',backend);sessionStorage.setItem('boo-session',JSON.stringify({backend,key:accessKey}))}catch{}$('#connect-builder').textContent='Studio unlocked';$('#studio-key').value='';$('#connect-dialog').close();if(pendingAction){const action=pendingAction;pendingAction=null;queueMicrotask(action);}}
       catch(e){accessKey='';$('#connection-error').textContent=e.message;$('#connect-builder').textContent='Unlock studio';}
       finally{$('#connect-submit').disabled=false;}
     };
-    $('#disconnect-builder').onclick=()=>{try{sessionStorage.removeItem('boo-session')}catch{}accessKey='';version++;clearTimeout(timer);$('#live-frame').removeAttribute('src');$('#live-frame').hidden=true;$('#build-messages').replaceChildren();$('#build-questions').replaceChildren();$('#studio-key').value='';$('#connect-builder').textContent='Unlock studio';$('#connect-dialog').close();go('home')};
+    $('#disconnect-builder').onclick=()=>{try{sessionStorage.removeItem('boo-session')}catch{}accessKey='';version++;clearTimeout(timer);$('#live-frame').removeAttribute('src');$('#live-frame').hidden=true;$('#build-messages').replaceChildren();$('#build-questions').replaceChildren();$('#studio-key').value='';$('#connect-builder').textContent='Unlock studio';$('#connect-dialog').close();studio.new()};
     try{const saved=JSON.parse(sessionStorage.getItem('boo-session')||'null');if(saved?.backend==='https://boo-studio-backend.onrender.com'&&typeof saved.key==='string'){
       $('#backend-url').value=saved.backend;$('#studio-key').value=saved.key;
       $('#connect-builder').textContent='Connecting…';queueMicrotask(()=>$('#connect-form').requestSubmit());
     }}catch{}
-    $('#followup-form').onsubmit=e=>{e.preventDefault();const value=$('#followup').value.trim();if(value)runAction('chat',{content:value})};
+    $('#followup-form').onsubmit=e=>{e.preventDefault();const value=$('#followup').value.trim();if(value){if(active)runAction('chat',{content:value});else studio.create(value,value.replace(/^(create|build|make)\s+(an?\s+)?/i,'').slice(0,46)||'My Halloween app')}};
     $('#refresh-preview').onclick=()=>loadPreview();$('#publish-app').onclick=()=>$('#publish-dialog').showModal();$('#cancel-publish').onclick=()=>$('#publish-dialog').close();$('#confirm-publish').onclick=()=>{$('#publish-dialog').close();runAction('publish',{confirm:true})};
     $('#older-messages').onclick=async()=>{const generation=version;try{skip+=20;const data=await api(`/apps/${active.id}/messages?skip=${skip}`);if(generation!==version)return;messages=new Map([...data.messages.map(m=>[m.id,m]),...messages]);drawMessages();$('#older-messages').hidden=!data.hasMore}catch(e){skip=Math.max(0,skip-20);status(e.message)}};
   },
+  new(){
+    version++;clearTimeout(timer);active=null;waiting=[];messages.clear();drawQuestions();go('builder-view');
+    $('#build-name').textContent='Let’s make something spooky.';$('#followup').value='';$('#followup').placeholder='Describe the app you want to build…';
+    $('#live-frame').removeAttribute('src');$('#live-frame').hidden=true;$('#published-link').hidden=true;$('#older-messages').hidden=true;
+    $('#preview-message').hidden=false;$('#preview-message').textContent='Your app will appear here. Start with a message in the chat.';
+    status('Chat with Base44 to create your app.');const host=$('#build-messages');host.replaceChildren();
+    const welcome=text('div','','chat-message assistant');welcome.append(text('b','Boo Studio'),text('p','What would you like to build? Describe your idea, and I’ll turn it into a working app. You can ask for changes right here.'));host.append(welcome);
+    for(const [label,prompt] of [['🎃 Party planner','Build a Halloween party planner with invitations, an RSVP list, and a countdown.'],['👻 Costume quiz','Build a fun Halloween costume quiz with personalized recommendations.'],['🍬 Candy tracker','Build a trick-or-treat candy tracker with a checklist and ratings.']]){const button=text('button',label,'chat-suggestion');button.onclick=()=>{$('#followup').value=prompt;$('#followup').focus()};host.append(button)}
+    controls();
+  },
   async create(prompt,name){
-    if(!accessKey){showConnection();return;}if(operation)return;
-    version++;clearTimeout(timer);go('builder-view');active=null;waiting=[];messages.clear();drawMessages();drawQuestions();$('#build-name').textContent=name;$('#live-frame').hidden=true;$('#live-frame').removeAttribute('src');$('#published-link').hidden=true;status('Starting your creation. This can take a couple of minutes…');operation=true;controls();
+    if(!accessKey){pendingAction=()=>this.create(prompt,name);showConnection();return;}if(operation)return;
+    version++;clearTimeout(timer);go('builder-view');active=null;waiting=[];messages.clear();drawMessages();drawQuestions();$('#build-name').textContent=name;$('#live-frame').hidden=true;$('#live-frame').removeAttribute('src');$('#published-link').hidden=true;status('Base44 is creating your app…');messages.set('pending',{id:'pending',role:'user',content:prompt});drawMessages();$('#followup').value='';operation=true;controls();
     try{const app=await api('/apps',{method:'POST',body:{prompt,name},requestId:crypto.randomUUID()});onApp({...app,remote:true});await this.open({...app,remote:true});}
     catch(e){status(e.message)}finally{operation=false;controls(active?.status?.state)}
   },
   async open(app){
-    if(!accessKey){showConnection();return;}version++;clearTimeout(timer);active=app;messages.clear();waiting=[];skip=0;drawMessages();drawQuestions();go('builder-view');$('#build-name').textContent=app.name||app.title;$('#live-frame').hidden=true;$('#live-frame').removeAttribute('src');$('#published-link').hidden=true;status('Loading your creation…');controls();await refresh(version);
+    if(!accessKey){pendingAction=()=>this.open(app);showConnection();return;}version++;clearTimeout(timer);active=app;messages.clear();waiting=[];skip=0;drawMessages();drawQuestions();go('builder-view');$('#build-name').textContent=app.name||app.title;$('#live-frame').hidden=true;$('#live-frame').removeAttribute('src');$('#published-link').hidden=true;status('Loading your creation…');controls();await refresh(version);
   },
   pause(){version++;clearTimeout(timer);$('#live-frame').removeAttribute('src');$('#live-frame').hidden=true;}
 };
