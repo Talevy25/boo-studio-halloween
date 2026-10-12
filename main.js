@@ -1,4 +1,4 @@
-import {studio} from './builder.js?v=render1';
+import {studio} from './builder.js?v=questions2';
 const $=s=>document.querySelector(s);
 const prompts={party:'Create a Halloween party planner with spooky invitations, an RSVP list, a costume contest, and a countdown to fright night.',costume:'Create a fun costume quiz that matches me with a Halloween alter ego based on my personality, style, and budget.',treat:'Create a trick-or-treat tracker with neighborhood routes, candy ratings, and a checklist of houses to visit.',story:'Create a spooky story club where friends can share ghost stories, pick a story of the week, and leave reactions.'};
 const titles={party:'Fright night planner',costume:'Costume matchmaker',treat:'Trick-or-treat tracker',story:'Spooky story club'};

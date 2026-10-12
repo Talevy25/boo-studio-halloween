@@ -17,27 +17,51 @@ function controls(state='unknown') {
   const locked=operation||waiting.length>0||state==='processing'||!active;
   $('#followup').disabled=locked;$('#send-followup').disabled=locked;
   $('#publish-app').disabled=locked||state!=='ready';$('#refresh-preview').disabled=operation||!active||state==='processing';
+  document.querySelectorAll('#build-questions button').forEach(button=>button.disabled=operation);
 }
 function drawMessages() {
   const container=$('#build-messages');container.replaceChildren();
   for(const m of messages.values()){if(!m.content||m.hidden)continue;const card=text('div','',`chat-message ${m.role==='user'?'user':'assistant'}`);card.append(text('b',m.role==='user'?'You':'Boo Studio'),text('p',m.content));container.append(card)}
 }
+let questionSignature='';
 function drawQuestions() {
-  const host=$('#build-questions');host.replaceChildren();
+  const host=$('#build-questions'),signature=JSON.stringify(waiting);
+  if(signature===questionSignature)return;
+  questionSignature=signature;host.replaceChildren();
   for(const q of waiting){
-    const card=text('div','','agent-question');const kind=q.waiting_on?.kind;card.append(text('h3','A little input needed'),text('p',q.name||'Builder question'));
-    // Render the exact action/question as text, never executable markup.
-    const detail=text('pre',JSON.stringify({request:q.waiting_on,arguments:q.arguments_string},null,2));card.append(detail);
-    let input;
-    let args={};try{args=JSON.parse(q.arguments_string||'{}')}catch{}
-    const options=q.waiting_on?.options||args.options;
-    if(kind==='choice'&&Array.isArray(options)&&options.length&&options.every(x=>typeof x==='string')){
-      input=document.createElement('select');input.setAttribute('aria-label','Your choice');for(const option of options){const el=document.createElement('option');el.value=option;el.textContent=option;input.append(el)}card.append(input);
+    const card=text('div','','agent-question'),kind=q.waiting_on?.kind;
+    let args=q.arguments;try{args??=JSON.parse(q.arguments_string||'{}')}catch{args={}}
+    card.append(text('h3',kind==='approval'?'Permission needed':'A little input needed'));
+    let collect=()=>undefined;
+    if(kind==='choice'&&Array.isArray(args.questions)&&args.questions.length){
+      const groups=args.questions.map((question,i)=>{
+        const group=document.createElement('fieldset');group.append(text('legend',question.question||'Choose an option'));
+        const inputs=(question.options||[]).map((option,j)=>{
+          const label=typeof option==='string'?option:option.label||'';
+          const row=text('label','','question-option'),input=document.createElement('input');
+          input.type=question.multi_select?'checkbox':'radio';input.name=`${q.id}-${i}`;input.value=label;
+          row.append(input,text('span',label));group.append(row);return input;
+        });card.append(group);return inputs;
+      });
+      collect=()=>({answers:groups.map((inputs,i)=>{const selected=inputs.filter(x=>x.checked).map(x=>x.value);if(!selected.length)throw Error('Choose an answer for each question.');return {question_index:i,selected_labels:selected}})});
+    }else if(kind==='input'&&Array.isArray(args.secrets_schema)&&args.secrets_schema.length){
+      card.append(text('p','These values are sent securely to the builder and are not saved in your browser.'));
+      const fields=args.secrets_schema.map(field=>{
+        const label=text('label',field.secretName||'Secret'),input=document.createElement('input');input.type='password';input.autocomplete='off';input.maxLength=8000;input.setAttribute('aria-label',field.secretName||'Secret');label.append(input);card.append(label);return {name:field.secretName,input};
+      });collect=()=>{const secrets={};for(const f of fields){if(!f.input.value.trim())throw Error('Fill in each requested value.');secrets[f.name]=f.input.value}return {secrets}};
+    }else if(kind==='approval'){
+      card.append(text('p',q.approval?.reason||q.approval?.details?.summary||`Allow ${q.name||'this action'}?`));
+      const details=document.createElement('details');details.append(text('summary','Action details'),text('pre',JSON.stringify(args,null,2)));card.append(details);
     }else if(kind==='choice'||kind==='input'){
-      input=document.createElement('textarea');input.setAttribute('aria-label',kind==='choice'?'Your choice':'Your answer');input.maxLength=8000;input.placeholder=kind==='choice'?'Enter the option you choose from the request above':'Enter the requested value';card.append(input);
-    }
-    if(!['choice','input','approval'].includes(kind)){card.append(text('p','This question format needs attention in Base44.'));host.append(card);continue;}
-    const actions=text('div','','dialog-actions');for(const decision of ['approved','rejected']){const b=text('button',decision==='approved'?(kind==='approval'?'Approve':'Send answer'):'Decline',decision==='approved'?'conjure':'secondary');b.onclick=()=>answer(q,decision,input?.value||'');actions.append(b)}card.append(actions);host.append(card);
+      card.append(text('p',args.question||args.description||q.name||'Your answer'));
+      const input=document.createElement('textarea');input.maxLength=8000;input.setAttribute('aria-label','Your answer');card.append(input);
+      collect=()=>{if(!input.value.trim())throw Error('Add your answer first.');return input.value.trim()};
+    }else {card.append(text('p','This question format is not supported yet.'));host.append(card);continue;}
+    const actions=text('div','','dialog-actions');
+    for(const decision of ['approved','rejected']){
+      const button=text('button',decision==='approved'?(kind==='approval'?'Allow':'Send answer'):'Decline',decision==='approved'?'conjure':'secondary');
+      button.onclick=async()=>{try{const value=decision==='approved'?collect():undefined;await answer(q,decision,value)}catch(e){status(e.message)}};actions.append(button);
+    }card.append(actions);host.append(card);
   }
 }
 async function refresh(generation=version) {
@@ -66,7 +90,6 @@ async function runAction(action,payload) {
   try{const result=await api(`/apps/${id}/${action}`,{method:'POST',body:payload,requestId:crypto.randomUUID()});if(generation!==version)return;if(action==='publish'){status('Published. Retrieving your app link…');const published=await api(`/apps/${id}/published`);if(published.url){const u=new URL(published.url);if(u.protocol==='https:'){$('#published-link').href=u.href;$('#published-link').hidden=false;status('Your creation is published.');}}}else{$('#followup').value='';$('#live-frame').removeAttribute('src');$('#live-frame').hidden=true;status('Your request was sent. Watching the build…');}return result;}catch(e){if(generation===version)status(e.message);}finally{operation=false;if(generation===version){controls(active.status?.state);clearTimeout(timer);timer=setTimeout(()=>refresh(generation),7000)}}
 }
 async function answer(q,decision,value) {
-  if(decision==='approved'&&q.waiting_on.kind!=='approval'&&!value.trim()){status('Add your answer first.');return;}
   await runAction('answer',{tool_call_id:q.id,action:decision,...(value?{extra_user_input:value}:{})});
 }
 function showConnection(){$('#connection-error').textContent='';$('#connect-dialog').showModal();}

@@ -1,3 +1,4 @@
+import {answerPayload} from './answers.mjs';
 import {createServer} from 'node:http';
 import {createHash,timingSafeEqual} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
@@ -32,7 +33,7 @@ export function createApp({client,store,adminKey,allowedOrigins=[],staticDir=res
     const app=await client.get(id);
     if(app.organization_id!==client.workspaceId)throw new ApiError(403,'This app is outside the configured workspace.');
     const transcript=await client.messages(id);
-    const waiting=(transcript.messages||[]).flatMap(m=>m.tool_calls||[]).filter(t=>t.status==='waiting_for_user_input');
+    const waiting=(transcript.messages||[]).flatMap(m=>(m.tool_calls||[]).map(t=>({...t,message_id:m.id}))).filter(t=>t.status==='waiting_for_user_input');
     return {app,waiting};
   }
   return createServer(async(req,res)=>{
@@ -99,8 +100,7 @@ export function createApp({client,store,adminKey,allowedOrigins=[],staticDir=res
           if(action==='answer'){
             const question=waiting.find(t=>t.id===input.tool_call_id);if(!question)throw new ApiError(409,'This question is no longer waiting.');
             if(!['choice','input','approval'].includes(question.waiting_on?.kind))throw new ApiError(409,'Open Base44 to answer this unsupported question.');
-            const payload={tool_call_id:input.tool_call_id,action:input.action};
-            if(input.action==='approved'&&question.waiting_on.kind!=='approval')payload.extra_user_input=validateText(input.extra_user_input,8000);
+            const payload=answerPayload(question,input);
             return safeApp(await client.answer(id,payload,key));
           }
           if(app.status?.state!=='ready')throw new ApiError(409,'The app must be ready before publishing.');

@@ -33,7 +33,7 @@ export class Base44 {
     return this.request('/apps', {method:'POST', requestId, body: {
       name, initial_message:{content:prompt}, organization_id:this.workspaceId,
       ...(this.publicSettings ? {public_settings:this.publicSettings} : {}), prevent_iframe_embedding:true,
-      custom_instructions:'Create a polished, responsive app. Use a tasteful Halloween visual theme with warm pumpkin accents, dark backgrounds, accessible contrast, and reduced-motion support. Follow the user’s functional requirements. Never include platform credentials in generated code.'
+      custom_instructions:'Create a polished, responsive app. Use a tasteful Halloween visual theme with warm pumpkin accents, dark backgrounds, accessible contrast, and reduced-motion support. Follow the user’s functional requirements. The user interacts through Boo Studio chat and preview, with a Publish button. Never direct them to a Base44 editor or dashboard. Ask for clarification using structured questions when needed. Never include platform credentials in generated code.'
     }});
   }
   get(id) { return this.request(`/apps/${encodeURIComponent(id)}`); }
@@ -52,7 +52,7 @@ export function safeMessages(data) {
   return (data.messages || []).map(m=>({
     id:m.id, role:m.role, content:m.hidden ? '' : typeof m.content === 'string' ? m.content : '', hidden:!!m.hidden,
     tool_calls:(m.tool_calls || []).filter(t=>t.status === 'waiting_for_user_input').map(t=>({
-      id:t.id, name:t.name, status:t.status, arguments_string:t.arguments_string || '', waiting_on:t.waiting_on || {kind:'unsupported'}
+      id:t.id, message_id:m.id, name:t.name, status:t.status, arguments:t.arguments, approval:t.approval, arguments_string:t.arguments_string || '', waiting_on:t.waiting_on || {kind:'unsupported'}
     }))
   }));
 }
