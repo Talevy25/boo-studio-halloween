@@ -1,6 +1,6 @@
 import {answerPayload} from './answers.mjs';
 import {createServer} from 'node:http';
-import {createHash,timingSafeEqual} from 'node:crypto';
+import {createHash,createHmac,randomUUID,timingSafeEqual} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {ApiError,safeApp,safeMessages,previewURL} from './base44.mjs';
@@ -13,9 +13,11 @@ async function body(req) {
   try{return JSON.parse(data)}catch{throw new ApiError(400,'Invalid JSON.');}
 }
 export function createApp({client,store,adminKey,allowedOrigins=[],staticDir=resolve('dist')}) {
-  const busy=new Set(); let creating=false; const attempts=new Map();
+  const busy=new Set(); let creating=false; 
   const json=(res,status,data)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(data))};
-  const owned=id=>{if(!validId(id)||!Object.hasOwn(store.data.apps,id))throw new ApiError(404,'Creation not found.');};
+  const owned=(id,owner)=>{if(!validId(id)||!Object.hasOwn(store.data.apps,id)||(owner&&store.data.apps[id].owner!==owner))throw new ApiError(404,'Creation not found.');};
+  const sign=id=>createHmac('sha256',adminKey).update(id).digest('base64url');
+  const scope=(key,owner)=>{if(!validId(key))throw new ApiError(400,'A valid request ID is required.');return owner?hash(owner+':'+key).toString('hex'):key};
   async function mutation(key,signature,run) {
     if(!validId(key))throw new ApiError(400,'A valid request ID is required.');
     const fingerprint=hash(signature).toString('hex');
@@ -52,13 +54,19 @@ export function createApp({client,store,adminKey,allowedOrigins=[],staticDir=res
       if(req.method==='OPTIONS'){res.writeHead(204,{'Access-Control-Allow-Methods':'GET, POST, OPTIONS','Access-Control-Allow-Headers':'Content-Type, Authorization, X-Request-ID','Access-Control-Max-Age':'600'});res.end();return;}
       if(url.pathname==='/api/health'&&req.method==='GET'){json(res,200,{service:'boo-studio',configured:!!(adminKey&&client.token&&client.workspaceId)});return;}
       if(!adminKey||adminKey.length<24)throw new ApiError(503,'Set a strong BOO_ADMIN_KEY on the server.','not_configured');
-      const ip=req.socket.remoteAddress;const attempt=attempts.get(ip)||{count:0,since:Date.now()};
-      if(Date.now()-attempt.since>60000){attempt.count=0;attempt.since=Date.now()}
-      if(attempt.count>=20)throw new ApiError(429,'Too many sign-in attempts. Try again in a minute.');
-      if(!timingSafeEqual(hash(req.headers.authorization||''),hash(`Bearer ${adminKey}`))){attempt.count++;attempts.set(ip,attempt);throw new ApiError(401,'Enter your studio access key.','unauthorized')}
-      if(url.pathname==='/api/apps'&&req.method==='GET'){json(res,200,{apps:Object.values(store.data.apps)});return;}
+      if(url.pathname==='/api/session'&&req.method==='POST'){
+        const id=randomUUID();json(res,201,{token:`guest.${id}.${sign(id)}`});return;
+      }
+      const auth=req.headers.authorization||'';
+      let owner=null;
+      if(!timingSafeEqual(hash(auth),hash(`Bearer ${adminKey}`))){
+        const guest=auth.match(/^Bearer guest\.([a-f0-9-]{36})\.([A-Za-z0-9_-]{43})$/);
+        if(!guest||!timingSafeEqual(hash(guest[2]),hash(sign(guest[1]))))throw new ApiError(401,'Your studio session expired. Refresh to reconnect.','unauthorized');
+        owner=guest[1];
+      }
+      if(url.pathname==='/api/apps'&&req.method==='GET'){json(res,200,{apps:Object.values(store.data.apps).filter(app=>!owner||app.owner===owner)});return;}
       if(url.pathname==='/api/apps'&&req.method==='POST'){
-        const input=await body(req);const prompt=validateText(input.prompt);const name=validateText(input.name,100);const key=req.headers['x-request-id'];
+        const input=await body(req);const prompt=validateText(input.prompt);const name=validateText(input.name,100);const key=scope(req.headers['x-request-id'],owner);
         const result=await mutation(key,JSON.stringify({prompt,name}),async()=>{
           if(creating)throw new ApiError(409,'Another creation is being started. Please wait.');
           const recent=Object.values(store.data.requests).filter(r=>Date.now()-r.date<60000&&r.kind==='create');
@@ -68,7 +76,7 @@ export function createApp({client,store,adminKey,allowedOrigins=[],staticDir=res
             const app=await client.create(prompt,name,key);
             if(!validId(app.id))throw new ApiError(502,'App creation returned no ID. Check Base44 before retrying.','result_unknown');
             // Preserve the mapping even if a configuration mismatch needs investigation.
-            const saved={...safeApp(app),prompt};store.data.apps[app.id]=saved;await store.save();
+            const saved={...safeApp(app),prompt,...(owner?{owner}:{})};store.data.apps[app.id]=saved;await store.save();
             if(app.organization_id!==client.workspaceId)throw new ApiError(502,'The created app is in an unexpected workspace. Check Base44 before retrying.','result_unknown');
             if(client.publicSettings && app.public_settings!==client.publicSettings)throw new ApiError(502,'App privacy settings did not apply. Review them in Base44.','result_unknown');
             return saved;
@@ -77,7 +85,7 @@ export function createApp({client,store,adminKey,allowedOrigins=[],staticDir=res
       }
       const match=url.pathname.match(/^\/api\/apps\/([\w-]+)(?:\/(messages|chat|answer|preview|publish|published))?$/);
       if(!match)throw new ApiError(404,'Not found.');
-      const [,id,action]=match;owned(id);
+      const [,id,action]=match;owned(id,owner);
       if(req.method==='GET'){
         if(!action){const app=await client.get(id);if(app.organization_id!==client.workspaceId)throw new ApiError(403,'Workspace mismatch.');const result=safeApp(app);store.data.apps[id]={...store.data.apps[id],...result};await store.save();json(res,200,result);return;}
         if(action==='messages'){const skip=Number(url.searchParams.get('skip')||0);if(!Number.isInteger(skip)||skip<0||skip>10000)throw new ApiError(400,'Invalid page.');const data=await client.messages(id,skip);json(res,200,{messages:safeMessages(data),hasMore:(data.messages||[]).length===20});return;}
@@ -89,7 +97,7 @@ export function createApp({client,store,adminKey,allowedOrigins=[],staticDir=res
       if(action==='chat')validateText(input.content);
       if(action==='answer'&&(!validId(input.tool_call_id)||!['approved','rejected'].includes(input.action)))throw new ApiError(400,'Invalid answer.');
       if(action==='publish'&&input.confirm!==true)throw new ApiError(400,'Confirm publication first.');
-      const key=action==='answer'?`answer-${id}-${input.tool_call_id}`:req.headers['x-request-id'];
+      const key=scope(action==='answer'?`answer-${id}-${input.tool_call_id}`:req.headers['x-request-id'],owner);
       const result=await mutation(key,JSON.stringify({id,action,input}),async()=>{
         if(busy.has(id))throw new ApiError(409,'An action is already running for this app.');busy.add(id);
         try {

@@ -74,3 +74,16 @@ test('a waiting input can resume a processing app with extra_user_input',async t
   const result=await f.call('/apps/app-test/answer',{method:'POST',body:{tool_call_id:'input-1',action:'approved',extra_user_input:'Pumpkin party'}});
   assert.equal(result.status,200);assert.equal(submitted.extra_user_input,'Pumpkin party');
 });
+test('automatic visitor sessions isolate apps and reject forged access',async t=>{
+ let count=0;const f=await fixture(t,async()=>ok({...app,id:`app-${++count}`}));
+ const session=async()=>{const r=await f.call('/session',{method:'POST',auth:false});assert.equal(r.status,201);return r.data.token};
+ const a=await session(),b=await session();
+ const call=async(token,path,method='GET',body)=>{const r=await fetch(f.url+'/api'+path,{method,headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json','X-Request-ID':'same-id'},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,data:await r.json()}};
+ const one=await call(a,'/apps','POST',{prompt:'Halloween countdown',name:'Boo'});assert.equal(one.status,201);
+ assert.equal((await call(b,'/apps')).data.apps.length,0);
+ for(const suffix of ['','/messages','/preview','/published'])assert.equal((await call(b,`/apps/${one.data.id}${suffix}`)).status,404);
+ assert.equal((await call(b,`/apps/${one.data.id}/chat`,'POST',{content:'change'})).status,404);
+ const two=await call(b,'/apps','POST',{prompt:'Halloween countdown',name:'Boo'});assert.equal(two.status,201);assert.notEqual(one.data.id,two.data.id);
+ assert.equal((await call(a+'x','/apps')).status,401);
+ assert.equal((await call(a,'/apps')).data.apps.length,1);
+});

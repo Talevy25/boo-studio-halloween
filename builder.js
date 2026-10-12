@@ -23,7 +23,20 @@ function drawMessages() {
   const container=$('#build-messages');container.replaceChildren();
   for(const m of messages.values()){if(!m.content||m.hidden)continue;const card=text('div','',`chat-message ${m.role==='user'?'user':'assistant'}`);card.append(text('b',m.role==='user'?'You':'Boo Studio'),text('p',m.content));container.append(card)}
 }
-let pendingAction=null;
+let connecting=null;
+async function connect(){
+  if(accessKey)return;
+  if(connecting)return connecting;
+  connecting=(async()=>{
+    status('Connecting to your studio… The first visit may take a minute.');
+    try{const saved=JSON.parse(localStorage.getItem('boo-session')||'null');if(saved?.backend===backend)accessKey=saved.key||''}catch{}
+    if(accessKey){try{await api('/apps');return}catch{accessKey=''}}
+    const response=await fetch(`${backend}/api/session`,{method:'POST',signal:AbortSignal.timeout(150000)});
+    const data=await response.json();if(!response.ok||!data.token)throw Error(data.error||'Could not connect to your studio. Please try again.');
+    accessKey=data.token;try{localStorage.setItem('boo-session',JSON.stringify({backend,key:accessKey}))}catch{}
+  })();
+  try{await connecting}finally{connecting=null}
+}
 let questionSignature='';
 function drawQuestions() {
   const host=$('#build-questions'),signature=JSON.stringify(waiting);
@@ -93,32 +106,12 @@ async function runAction(action,payload) {
 async function answer(q,decision,value) {
   await runAction('answer',{tool_call_id:q.id,action:decision,...(value?{extra_user_input:value}:{})});
 }
-function showConnection(){status('Open your private studio link once on this device to start building.');}
 export const studio={
   get ready(){return !!accessKey},
-  init({navigate,saveApp}){
+  init({navigate,saveApp,replaceApps}){
     go=navigate;onApp=saveApp;
-    try{$('#backend-url').value=localStorage.getItem('boo-backend')||'https://boo-studio-backend.onrender.com'}catch{}
-    if(location.hostname==='localhost'||location.hostname==='127.0.0.1')$('#backend-url').value=location.origin;
-    $('#studio-key-file').onchange=async e=>{
-      try{const file=e.target.files[0];if(!file||file.size>4096)throw Error('Choose your studio access file.');const config=JSON.parse(await file.text());
-      if(config.backend!=='https://boo-studio-backend.onrender.com'||typeof config.key!=='string'||config.key.length<24)throw Error('Invalid studio access file.');
-      $('#backend-url').value=config.backend;$('#studio-key').value=config.key;$('#connection-error').textContent='';$('#connect-form').requestSubmit();
-      }catch(error){$('#connection-error').textContent=error.message}finally{e.target.value=''}
-    };
-    $('#connect-builder').onclick=showConnection;$('#close-connect').onclick=()=>$('#connect-dialog').close();
-    $('#connect-form').onsubmit=async e=>{e.preventDefault();$('#connection-error').textContent='';$('#connect-submit').disabled=true;
-      try{version++;clearTimeout(timer);backend=origin($('#backend-url').value);accessKey=$('#studio-key').value;const health=await api('/health');if(!health.configured)throw Error('Your backend is missing its Base44 workspace, token, or studio key.');const data=await api('/apps');for(const app of data.apps)onApp({...app,remote:true});try{localStorage.setItem('boo-backend',backend);localStorage.setItem('boo-session',JSON.stringify({backend,key:accessKey}))}catch{}$('#connect-builder').textContent='Studio unlocked';$('#studio-key').value='';$('#connect-dialog').close();if(pendingAction){const action=pendingAction;pendingAction=null;queueMicrotask(action);}}
-      catch(e){accessKey='';$('#connection-error').textContent=e.message;$('#connect-builder').textContent='Unlock studio';}
-      finally{$('#connect-submit').disabled=false;}
-    };
-    $('#disconnect-builder').onclick=()=>{try{localStorage.removeItem('boo-session')}catch{}accessKey='';version++;clearTimeout(timer);$('#live-frame').removeAttribute('src');$('#live-frame').hidden=true;$('#build-messages').replaceChildren();$('#build-questions').replaceChildren();$('#studio-key').value='';$('#connect-builder').textContent='Unlock studio';$('#connect-dialog').close();studio.new()};
-    try{const params=new URLSearchParams(location.hash.slice(1));const key=params.get('studio');
-    if(key&&key.length>=24&&key.length<200){localStorage.setItem('boo-session',JSON.stringify({backend:'https://boo-studio-backend.onrender.com',key}));history.replaceState(null,'',location.pathname+location.search);}
-    const saved=JSON.parse(localStorage.getItem('boo-session')||sessionStorage.getItem('boo-session')||'null');if(saved?.backend==='https://boo-studio-backend.onrender.com'&&typeof saved.key==='string'){
-      $('#backend-url').value=saved.backend;$('#studio-key').value=saved.key;
-      $('#connect-builder').textContent='Connecting…';queueMicrotask(()=>$('#connect-form').requestSubmit());
-    }}catch{}
+    backend=['localhost','127.0.0.1'].includes(location.hostname)?location.origin:'https://boo-studio-backend.onrender.com';
+    queueMicrotask(async()=>{try{await connect();const data=await api('/apps');replaceApps(data.apps);if(!active&&!operation)status('Describe your idea to start building.')}catch(e){status(e.message)}});
     $('#followup-form').onsubmit=e=>{e.preventDefault();const value=$('#followup').value.trim();if(value){if(active)runAction('chat',{content:value});else studio.create(value,value.replace(/^(create|build|make)\s+(an?\s+)?/i,'').slice(0,46)||'My Halloween app')}};
     $('#refresh-preview').onclick=()=>loadPreview();$('#publish-app').onclick=()=>$('#publish-dialog').showModal();$('#cancel-publish').onclick=()=>$('#publish-dialog').close();$('#confirm-publish').onclick=()=>{$('#publish-dialog').close();runAction('publish',{confirm:true})};
     $('#older-messages').onclick=async()=>{const generation=version;try{skip+=20;const data=await api(`/apps/${active.id}/messages?skip=${skip}`);if(generation!==version)return;messages=new Map([...data.messages.map(m=>[m.id,m]),...messages]);drawMessages();$('#older-messages').hidden=!data.hasMore}catch(e){skip=Math.max(0,skip-20);status(e.message)}};
@@ -128,19 +121,20 @@ export const studio={
     $('#build-name').textContent='Let’s make something spooky.';$('#followup').value='';$('#followup').placeholder='Describe the app you want to build…';
     $('#live-frame').removeAttribute('src');$('#live-frame').hidden=true;$('#published-link').hidden=true;$('#older-messages').hidden=true;
     $('#preview-message').hidden=false;$('#preview-message').textContent='Your app will appear here. Start with a message in the chat.';
-    status('Chat with Base44 to create your app.');const host=$('#build-messages');host.replaceChildren();
+    status('Describe your idea to start building.');const host=$('#build-messages');host.replaceChildren();
     const welcome=text('div','','chat-message assistant');welcome.append(text('b','Boo Studio'),text('p','What would you like to build? Describe your idea, and I’ll turn it into a working app. You can ask for changes right here.'));host.append(welcome);
     for(const [label,prompt] of [['🎃 Party planner','Build a Halloween party planner with invitations, an RSVP list, and a countdown.'],['👻 Costume quiz','Build a fun Halloween costume quiz with personalized recommendations.'],['🍬 Candy tracker','Build a trick-or-treat candy tracker with a checklist and ratings.']]){const button=text('button',label,'chat-suggestion');button.onclick=()=>{$('#followup').value=prompt;$('#followup').focus()};host.append(button)}
     controls();
   },
   async create(prompt,name){
-    if(!accessKey){pendingAction=()=>this.create(prompt,name);showConnection();return;}if(operation)return;
-    version++;clearTimeout(timer);go('builder-view');active=null;waiting=[];messages.clear();drawMessages();drawQuestions();$('#build-name').textContent=name;$('#live-frame').hidden=true;$('#live-frame').removeAttribute('src');$('#published-link').hidden=true;status('Base44 is creating your app…');messages.set('pending',{id:'pending',role:'user',content:prompt});drawMessages();$('#followup').value='';operation=true;controls();
+    if(operation)return;
+    try{await connect()}catch(e){status(e.message);return;}if(operation)return;
+    version++;clearTimeout(timer);go('builder-view');active=null;waiting=[];messages.clear();drawMessages();drawQuestions();$('#build-name').textContent=name;$('#live-frame').hidden=true;$('#live-frame').removeAttribute('src');$('#published-link').hidden=true;status('Creating your app…');messages.set('pending',{id:'pending',role:'user',content:prompt});drawMessages();$('#followup').value='';operation=true;controls();
     try{const app=await api('/apps',{method:'POST',body:{prompt,name},requestId:crypto.randomUUID()});onApp({...app,remote:true});await this.open({...app,remote:true});}
     catch(e){status(e.message)}finally{operation=false;controls(active?.status?.state)}
   },
   async open(app){
-    if(!accessKey){pendingAction=()=>this.open(app);showConnection();return;}version++;clearTimeout(timer);active=app;messages.clear();waiting=[];skip=0;drawMessages();drawQuestions();go('builder-view');$('#build-name').textContent=app.name||app.title;$('#live-frame').hidden=true;$('#live-frame').removeAttribute('src');$('#published-link').hidden=true;status('Loading your creation…');controls();await refresh(version);
+    try{await connect()}catch(e){status(e.message);return;}version++;clearTimeout(timer);active=app;messages.clear();waiting=[];skip=0;drawMessages();drawQuestions();go('builder-view');$('#build-name').textContent=app.name||app.title;$('#live-frame').hidden=true;$('#live-frame').removeAttribute('src');$('#published-link').hidden=true;status('Loading your creation…');controls();await refresh(version);
   },
   pause(){version++;clearTimeout(timer);$('#live-frame').removeAttribute('src');$('#live-frame').hidden=true;}
 };
