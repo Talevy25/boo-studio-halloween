@@ -52,7 +52,7 @@ async function refresh(generation=version) {
     waiting=conversation.messages.flatMap(m=>m.tool_calls||[]);drawMessages();drawQuestions();controls(app.status.state);
     $('#older-messages').hidden=!conversation.hasMore;
     const labels={processing:'Conjuring your app…',ready:'Your build is ready.',error:'The build ran into a problem. Read the conversation below.',unknown:'Checking the build…'};
-    status(waiting.length?'The builder is waiting for your answer.':labels[app.status.state]||'Checking the build…');
+    status(waiting.length?'The builder is waiting for your answer.':app.status.state==='error'&&app.status.details?app.status.details:labels[app.status.state]||'Checking the build…');
     if(app.status.state==='ready'&&!waiting.length&&$('#live-frame').hidden&&!operation)await loadPreview(generation);
   }catch(e){if(generation===version){status(e.message);controls();}}
   if(generation===version&&(operation||waiting.length||!['ready','error'].includes(active?.status?.state)))timer=setTimeout(()=>refresh(generation),7000);
