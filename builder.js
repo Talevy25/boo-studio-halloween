@@ -74,8 +74,14 @@ export const studio={
   get ready(){return !!accessKey},
   init({navigate,saveApp}){
     go=navigate;onApp=saveApp;
-    try{$('#backend-url').value=localStorage.getItem('boo-backend')||''}catch{}
+    try{$('#backend-url').value=localStorage.getItem('boo-backend')||'https://boo-studio-backend.onrender.com'}catch{}
     if(location.hostname==='localhost'||location.hostname==='127.0.0.1')$('#backend-url').value=location.origin;
+    $('#studio-key-file').onchange=async e=>{
+      try{const file=e.target.files[0];if(!file||file.size>4096)throw Error('Choose your studio access file.');const config=JSON.parse(await file.text());
+      if(config.backend!=='https://boo-studio-backend.onrender.com'||typeof config.key!=='string'||config.key.length<24)throw Error('Invalid studio access file.');
+      $('#backend-url').value=config.backend;$('#studio-key').value=config.key;$('#connection-error').textContent='';$('#connect-form').requestSubmit();
+      }catch(error){$('#connection-error').textContent=error.message}finally{e.target.value=''}
+    };
     $('#connect-builder').onclick=showConnection;$('#close-connect').onclick=()=>$('#connect-dialog').close();
     $('#connect-form').onsubmit=async e=>{e.preventDefault();$('#connection-error').textContent='';$('#connect-submit').disabled=true;
       try{version++;clearTimeout(timer);backend=origin($('#backend-url').value);accessKey=$('#studio-key').value;const health=await api('/health');if(!health.configured)throw Error('Your backend is missing its Base44 workspace, token, or studio key.');const data=await api('/apps');for(const app of data.apps)onApp({...app,remote:true});try{localStorage.setItem('boo-backend',backend)}catch{}$('#connect-builder').textContent='Builder connected';$('#studio-key').value='';$('#connect-dialog').close();}
