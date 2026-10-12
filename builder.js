@@ -107,11 +107,15 @@ export const studio={
     };
     $('#connect-builder').onclick=showConnection;$('#close-connect').onclick=()=>$('#connect-dialog').close();
     $('#connect-form').onsubmit=async e=>{e.preventDefault();$('#connection-error').textContent='';$('#connect-submit').disabled=true;
-      try{version++;clearTimeout(timer);backend=origin($('#backend-url').value);accessKey=$('#studio-key').value;const health=await api('/health');if(!health.configured)throw Error('Your backend is missing its Base44 workspace, token, or studio key.');const data=await api('/apps');for(const app of data.apps)onApp({...app,remote:true});try{localStorage.setItem('boo-backend',backend)}catch{}$('#connect-builder').textContent='Builder connected';$('#studio-key').value='';$('#connect-dialog').close();}
-      catch(e){accessKey='';$('#connection-error').textContent=e.message;$('#connect-builder').textContent='Connect builder';}
+      try{version++;clearTimeout(timer);backend=origin($('#backend-url').value);accessKey=$('#studio-key').value;const health=await api('/health');if(!health.configured)throw Error('Your backend is missing its Base44 workspace, token, or studio key.');const data=await api('/apps');for(const app of data.apps)onApp({...app,remote:true});try{localStorage.setItem('boo-backend',backend);sessionStorage.setItem('boo-session',JSON.stringify({backend,key:accessKey}))}catch{}$('#connect-builder').textContent='Studio unlocked';$('#studio-key').value='';$('#connect-dialog').close();}
+      catch(e){accessKey='';$('#connection-error').textContent=e.message;$('#connect-builder').textContent='Unlock studio';}
       finally{$('#connect-submit').disabled=false;}
     };
-    $('#disconnect-builder').onclick=()=>{accessKey='';version++;clearTimeout(timer);$('#live-frame').removeAttribute('src');$('#live-frame').hidden=true;$('#build-messages').replaceChildren();$('#build-questions').replaceChildren();$('#studio-key').value='';$('#connect-builder').textContent='Connect builder';$('#connect-dialog').close();go('home')};
+    $('#disconnect-builder').onclick=()=>{try{sessionStorage.removeItem('boo-session')}catch{}accessKey='';version++;clearTimeout(timer);$('#live-frame').removeAttribute('src');$('#live-frame').hidden=true;$('#build-messages').replaceChildren();$('#build-questions').replaceChildren();$('#studio-key').value='';$('#connect-builder').textContent='Unlock studio';$('#connect-dialog').close();go('home')};
+    try{const saved=JSON.parse(sessionStorage.getItem('boo-session')||'null');if(saved?.backend==='https://boo-studio-backend.onrender.com'&&typeof saved.key==='string'){
+      $('#backend-url').value=saved.backend;$('#studio-key').value=saved.key;
+      $('#connect-builder').textContent='Connecting…';queueMicrotask(()=>$('#connect-form').requestSubmit());
+    }}catch{}
     $('#followup-form').onsubmit=e=>{e.preventDefault();const value=$('#followup').value.trim();if(value)runAction('chat',{content:value})};
     $('#refresh-preview').onclick=()=>loadPreview();$('#publish-app').onclick=()=>$('#publish-dialog').showModal();$('#cancel-publish').onclick=()=>$('#publish-dialog').close();$('#confirm-publish').onclick=()=>{$('#publish-dialog').close();runAction('publish',{confirm:true})};
     $('#older-messages').onclick=async()=>{const generation=version;try{skip+=20;const data=await api(`/apps/${active.id}/messages?skip=${skip}`);if(generation!==version)return;messages=new Map([...data.messages.map(m=>[m.id,m]),...messages]);drawMessages();$('#older-messages').hidden=!data.hasMore}catch(e){skip=Math.max(0,skip-20);status(e.message)}};
