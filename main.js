@@ -1,4 +1,4 @@
-import {studio} from './builder.js?v=chat4';
+import {studio} from './builder.js?v=direct5';
 const $=s=>document.querySelector(s);
 let apps=[];try{apps=JSON.parse(localStorage.getItem('boo-drafts')||'[]').filter(a=>a.remote&&a.id)}catch{}
 function view(name){for(const id of ['home','draft-view','library','builder-view']){const el=$('#'+id);if(el)el.hidden=id!==name}$('#crumb').textContent=name==='library'?'My apps':'App creator';$('#create-nav').classList.toggle('selected',name!=='library');$('#creations-nav').classList.toggle('selected',name==='library');}

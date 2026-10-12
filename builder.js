@@ -93,7 +93,7 @@ async function runAction(action,payload) {
 async function answer(q,decision,value) {
   await runAction('answer',{tool_call_id:q.id,action:decision,...(value?{extra_user_input:value}:{})});
 }
-function showConnection(){$('#connection-error').textContent='';$('#connect-dialog').showModal();}
+function showConnection(){status('Open your private studio link once on this device to start building.');}
 export const studio={
   get ready(){return !!accessKey},
   init({navigate,saveApp}){
@@ -108,12 +108,14 @@ export const studio={
     };
     $('#connect-builder').onclick=showConnection;$('#close-connect').onclick=()=>$('#connect-dialog').close();
     $('#connect-form').onsubmit=async e=>{e.preventDefault();$('#connection-error').textContent='';$('#connect-submit').disabled=true;
-      try{version++;clearTimeout(timer);backend=origin($('#backend-url').value);accessKey=$('#studio-key').value;const health=await api('/health');if(!health.configured)throw Error('Your backend is missing its Base44 workspace, token, or studio key.');const data=await api('/apps');for(const app of data.apps)onApp({...app,remote:true});try{localStorage.setItem('boo-backend',backend);sessionStorage.setItem('boo-session',JSON.stringify({backend,key:accessKey}))}catch{}$('#connect-builder').textContent='Studio unlocked';$('#studio-key').value='';$('#connect-dialog').close();if(pendingAction){const action=pendingAction;pendingAction=null;queueMicrotask(action);}}
+      try{version++;clearTimeout(timer);backend=origin($('#backend-url').value);accessKey=$('#studio-key').value;const health=await api('/health');if(!health.configured)throw Error('Your backend is missing its Base44 workspace, token, or studio key.');const data=await api('/apps');for(const app of data.apps)onApp({...app,remote:true});try{localStorage.setItem('boo-backend',backend);localStorage.setItem('boo-session',JSON.stringify({backend,key:accessKey}))}catch{}$('#connect-builder').textContent='Studio unlocked';$('#studio-key').value='';$('#connect-dialog').close();if(pendingAction){const action=pendingAction;pendingAction=null;queueMicrotask(action);}}
       catch(e){accessKey='';$('#connection-error').textContent=e.message;$('#connect-builder').textContent='Unlock studio';}
       finally{$('#connect-submit').disabled=false;}
     };
-    $('#disconnect-builder').onclick=()=>{try{sessionStorage.removeItem('boo-session')}catch{}accessKey='';version++;clearTimeout(timer);$('#live-frame').removeAttribute('src');$('#live-frame').hidden=true;$('#build-messages').replaceChildren();$('#build-questions').replaceChildren();$('#studio-key').value='';$('#connect-builder').textContent='Unlock studio';$('#connect-dialog').close();studio.new()};
-    try{const saved=JSON.parse(sessionStorage.getItem('boo-session')||'null');if(saved?.backend==='https://boo-studio-backend.onrender.com'&&typeof saved.key==='string'){
+    $('#disconnect-builder').onclick=()=>{try{localStorage.removeItem('boo-session')}catch{}accessKey='';version++;clearTimeout(timer);$('#live-frame').removeAttribute('src');$('#live-frame').hidden=true;$('#build-messages').replaceChildren();$('#build-questions').replaceChildren();$('#studio-key').value='';$('#connect-builder').textContent='Unlock studio';$('#connect-dialog').close();studio.new()};
+    try{const params=new URLSearchParams(location.hash.slice(1));const key=params.get('studio');
+    if(key&&key.length>=24&&key.length<200){localStorage.setItem('boo-session',JSON.stringify({backend:'https://boo-studio-backend.onrender.com',key}));history.replaceState(null,'',location.pathname+location.search);}
+    const saved=JSON.parse(localStorage.getItem('boo-session')||sessionStorage.getItem('boo-session')||'null');if(saved?.backend==='https://boo-studio-backend.onrender.com'&&typeof saved.key==='string'){
       $('#backend-url').value=saved.backend;$('#studio-key').value=saved.key;
       $('#connect-builder').textContent='Connecting…';queueMicrotask(()=>$('#connect-form').requestSubmit());
     }}catch{}
