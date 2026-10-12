@@ -7,7 +7,6 @@
     "dev": "node scripts/serve.mjs",
     "build": "node scripts/build.mjs",
     "preview": "node scripts/serve.mjs dist",
-    "start": "node server/start.mjs",
-    "test": "node --test tests/*.test.mjs"
+    "start": "node scripts/serve.mjs dist"
   }
 }
