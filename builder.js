@@ -1,7 +1,7 @@
 const $=selector=>document.querySelector(selector);
 let backend='',accessKey='',active=null,version=0,timer=null,operation=false,waiting=[],messages=new Map(),skip=0,onApp=()=>{},go=()=>{};
-const text=(tag,content,className)=>{const el=document.createElement(tag);el.textContent=content;if(className)el.className=className;return el};
-const status=message=>{$('#build-status').textContent=message};
+const text=(tag,content,className)=>{const el=document.createElement(tag);el.textContent=String(content).replace(/base44/gi,'Boo Studio');if(className)el.className=className;return el};
+const status=message=>{$('#build-status').textContent=String(message).replace(/base44/gi,'the builder')};
 function origin(value) {
   const u=new URL(value);if(u.username||u.password||u.search||u.hash)throw Error('Use a backend origin without credentials or query parameters.');
   if(u.protocol!=='https:'&&!(u.protocol==='http:'&&['localhost','127.0.0.1'].includes(u.hostname)))throw Error('The backend must use HTTPS.');

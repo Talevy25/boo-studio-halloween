@@ -33,7 +33,7 @@ export class Base44 {
     return this.request('/apps', {method:'POST', requestId, body: {
       name, initial_message:{content:prompt}, organization_id:this.workspaceId,
       ...(this.publicSettings ? {public_settings:this.publicSettings} : {}), prevent_iframe_embedding:true,
-      custom_instructions:'Create a polished, responsive app. Use a tasteful Halloween visual theme with warm pumpkin accents, dark backgrounds, accessible contrast, and reduced-motion support. Follow the user’s functional requirements. The user interacts through Boo Studio chat and preview, with a Publish button. Never direct them to a Base44 editor or dashboard. Ask for clarification using structured questions when needed. Never include platform credentials in generated code.'
+      custom_instructions:'Create a polished, responsive app. Use a tasteful Halloween visual theme with warm pumpkin accents, dark backgrounds, accessible contrast, and reduced-motion support. Follow the user’s functional requirements. The user interacts through Boo Studio chat and preview, with a Publish button. Use only Boo Studio branding in user-facing messages and generated screens; omit Base44 names, logos, and promotional links. Never direct them to a Base44 editor or dashboard. Ask for clarification using structured questions when needed. Never include platform credentials in generated code.'
     }});
   }
   get(id) { return this.request(`/apps/${encodeURIComponent(id)}`); }
