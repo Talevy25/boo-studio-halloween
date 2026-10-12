@@ -3,10 +3,12 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "engines": {"node": ">=20"},
   "scripts": {
-    "dev": "node scripts/serve.mjs",
+    "dev": "node server/start.mjs",
+    "check": "node scripts/check-connection.mjs",
+    "test": "node --test tests/",
     "build": "node scripts/build.mjs",
-    "preview": "node scripts/serve.mjs dist",
-    "start": "node scripts/serve.mjs dist"
+    "start": "node server/start.mjs dist"
   }
 }
