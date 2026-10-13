@@ -20,6 +20,14 @@ Node 20 or later. No dependencies.
 - `server/instructions.mjs` sends the Boo Studio brand and Halloween style as custom instructions on every app.
 - Conversations are read back from Base44, not copied locally.
 
+## Hosting on Render
+
+Live at https://boo-studio-backend.onrender.com (the GitHub Pages site forwards there).
+
+- Build command: `npm run build`. Start command: `npm start`.
+- Environment: `BASE44_ACCESS_TOKEN` (or the older `BASE44_PAT`) and `BASE44_WORKSPACE_ID` as secrets. The server binds to `0.0.0.0` on Render automatically.
+- Render Free instances sleep when idle and take about a minute to wake. Their disk is wiped on every deploy or restart, so the list of which visitor owns which app resets with it.
+
 ## Workspace settings (Base44 dashboard)
 
 - **White label → System Prompt**: turn on **Custom system prompt** and set **Brand name** to `Boo Studio`. Leave **Agent prompt** empty to keep Base44's built-in data, sign-in and backend features.

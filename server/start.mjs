@@ -7,7 +7,7 @@ import {Store} from './store.mjs';
 const config = loadConfig();
 const base44 = new Base44(config);
 const server = createApp({base44, store: new Store(config.dataDir), queue: new CreateQueue(), root: process.argv[2] || '.'});
-const port = Number(process.env.PORT || 5173), host = process.env.HOST || '127.0.0.1';
+const port = Number(process.env.PORT || 5173), host = process.env.HOST || (process.env.RENDER ? '0.0.0.0' : '127.0.0.1');
 // Long build turns hold requests open; keep Node from cutting them off.
 server.requestTimeout = 0; server.headersTimeout = 130_000;
 server.listen(port, host, () => {

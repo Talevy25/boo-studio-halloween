@@ -1,3 +1,5 @@
+// GitHub Pages can only serve the page; the builder runs on the Render server.
+if(location.hostname.endsWith('github.io'))location.replace('https://boo-studio-backend.onrender.com/');
 const $=s=>document.querySelector(s);
 const el=(tag,props={},...children)=>{const node=Object.assign(document.createElement(tag),props);node.append(...children);return node};
 const api=async(path,body)=>{const response=await fetch(path,body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const data=await response.json().catch(()=>({}));if(!response.ok)throw Object.assign(new Error(data.error||'Something went wrong.'),{status:response.status});return data};

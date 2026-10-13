@@ -11,7 +11,7 @@ export function loadConfig(file = '.env.local') {
   } catch {}
   const get = name => process.env[name] || values[name] || '';
   return {
-    token: get('BASE44_ACCESS_TOKEN'),
+    token: get('BASE44_ACCESS_TOKEN') || get('BASE44_PAT'), // BASE44_PAT is the name the Render service already uses
     workspaceId: get('BASE44_WORKSPACE_ID'),
     host: (get('BASE44_PLATFORM_HOST') || 'https://app.base44.com').replace(/\/+$/, ''),
     dataDir: get('BOO_DATA_DIR') || 'data'
